@@ -1,0 +1,77 @@
+name: Build Windows
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths: ['src/**', 'tests/**', 'scripts/**', 'CMakeLists.txt', 'Build.ps1', '.github/workflows/build.yml']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test Release x64
+        shell: pwsh
+        run: ./Build.ps1 -Configuration Release
+      - name: Package VST3 and standalone
+        shell: pwsh
+        run: ./scripts/Package.ps1 -Configuration Release
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xchords-Windows-x64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/test-artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Publish downloads
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $development = $env:GITHUB_REF -eq 'refs/heads/main'
+          $tag = if ($development) { 'latest' } else { $env:GITHUB_REF_NAME }
+          $title = if ($development) { 'Latest build · Windows x64' } else { "Xchords - Harmony $tag" }
+          $notes = "Automated Release build for Windows x64.`n`nCommit: $env:GITHUB_SHA`nRun: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`n`nDownload the VST3 or standalone ZIP. Extract before installing. SHA256SUMS.txt contains package checksums."
+          if ($development) { $notes += "`n`nDevelopment build from main, updated after successful builds." }
+          $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -LiteralPath $notesFile -Value $notes -Encoding utf8
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            $flags = if ($development) { @('--prerelease') } else { @('--verify-tag', '--latest') }
+            gh release create $tag --target $env:GITHUB_SHA --title $title --notes-file $notesFile @flags
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+          }
+          $packages = @(Get-ChildItem dist -File | ForEach-Object FullName)
+          gh release upload $tag @packages --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          if ($development) {
+            gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/latest" -f "sha=$env:GITHUB_SHA" -F force=true
+            if ($LASTEXITCODE -ne 0) { throw 'Latest tag update failed' }
+          }
+          gh release edit $tag --title $title --notes-file $notesFile
+          if ($LASTEXITCODE -ne 0) { throw 'Release notes update failed' }

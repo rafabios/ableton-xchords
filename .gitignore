@@ -1,0 +1,4 @@
+/build/
+/.local/
+/test-artifacts/
+/dist/
