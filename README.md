@@ -16,6 +16,8 @@ O workflow `Build Windows` compila em Release x64 no Windows Server 2022, execut
 
 Para empacotar localmente após compilar: `./scripts/Package.ps1 -Configuration Release`. Os ZIPs ficam em `dist/` e não entram no Git.
 
+Os binários usam o runtime Microsoft Visual C++ x64. Se o Windows indicar ausência de VCRUNTIME140/MSVCP140, instale o redistribuível oficial: https://aka.ms/vc14/vc_redist.x64.exe. Referência: https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist/
+
 O workflow `Deploy website` publica `site/` no GitHub Pages. Nas configurações do repositório, a fonte do Pages deve ser **GitHub Actions**, com domínio customizado `xchords.vemcompy.tec.br`. No provedor DNS, crie um CNAME `xchords` apontando para `rafabios.github.io` (sem caminho de repositório). Ative HTTPS quando o GitHub concluir a emissão do certificado. Documentação: https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site
 
 Os links de download no site apontam para assets públicos da release `latest`; a API é usada apenas para exibir a data. Se a consulta da API falhar, os links continuam disponíveis. A primeira execução precisa terminar para disponibilizar os pacotes.
