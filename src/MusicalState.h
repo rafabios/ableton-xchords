@@ -52,17 +52,21 @@ struct ChordStep {
  int root=0,formula=0,scale=0,octave=5;
  int instrument=0,bassPattern=0,inversion=0;
  bool strum=false;
+ bool rest=false;
+ double gate=1;
  std::vector<int> frets;
 };
 inline std::vector<Event> progressionEvents(const std::vector<ChordStep>& steps) {
  std::vector<Event> result;double start=0;
  for(const auto& step:steps) {
-  if(step.beats<=0 || step.beats>64)throw std::invalid_argument("Step duration");
-  if(step.instrument>=2){auto line=bassLine(step.notes,step.root,step.instrument,step.bassPattern,step.beats,step.velocity);for(auto e:line){e.start+=start;result.push_back(e);}}
-  else for(size_t i=0;i<step.notes.size();++i){double offset=step.instrument==1 && step.strum?std::min(.04,step.beats/(step.notes.size()+1))*i:0;result.push_back({step.notes[i],start+offset,step.beats-offset,step.velocity});}
+  if(!std::isfinite(step.beats) || step.beats<=0 || step.beats>64)throw std::invalid_argument("Step duration");
+  const double gate=std::clamp(step.gate,.05,1.0);
+  if(!step.rest && step.instrument>=2){auto line=bassLine(step.notes,step.root,step.instrument,step.bassPattern,step.beats,step.velocity);for(auto e:line){e.start+=start;e.duration*=gate;result.push_back(e);}}
+  else if(!step.rest)for(size_t i=0;i<step.notes.size();++i){double length=step.beats*gate;double offset=step.instrument==1 && step.strum?std::min(.04,length/(step.notes.size()+1))*i:0;result.push_back({step.notes[i],start+offset,length-offset,step.velocity});}
   start+=step.beats;
  }
  return result;
 }
+inline double progressionLength(const std::vector<ChordStep>& steps){double result=0;for(const auto& step:steps)result+=step.beats;return result;}
 inline void leadVoices(std::vector<ChordStep>& steps){for(size_t i=1;i<steps.size();++i){auto& step=steps[i];if(step.instrument==1){auto shapes=guitarShapes(step.root,catalog(step.scale!=0)[static_cast<size_t>(step.formula)],step.inversion);auto pcs=[](const std::vector<int>& ns){std::vector<int> p;for(int n:ns)p.push_back(n%12);return uniqueNotes(p);};int best=movement(steps[i-1].notes,step.notes);for(const auto& shape:shapes){auto ns=shapeNotes(shape.frets);if(pcs(ns)!=pcs(step.notes))continue;int score=movement(steps[i-1].notes,ns);if(score<best){best=score;step.notes=ns;step.frets=shape.frets;}}}else if(step.instrument==0)step.notes=closeVoicing(steps[i-1].notes,step.notes,24,96);else if(!step.notes.empty() && !steps[i-1].notes.empty()){auto strings=tuning(step.instrument);int shift=0,best=128;for(int offset=-36;offset<=36;offset+=12){int root=step.notes.front()+offset;if(root<strings.front() || root>strings.back()+12)continue;int distance=std::abs(root-steps[i-1].notes.front());if(distance<best){best=distance;shift=offset;}}for(auto& n:step.notes)n+=shift;}}}
 }

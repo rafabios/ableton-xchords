@@ -39,7 +39,7 @@ public:
  void preview(bool wholeProgression=false) {
   previewIsProgression=wholeProgression;
   const auto events=wholeProgression?xc::progressionEvents(progression):makeEvents(settings);
-  const SpinLock::ScopedLockType guard(lock); pending.clear();pendingLength=0;
+  const SpinLock::ScopedLockType guard(lock); pending.clear();pendingLength=wholeProgression?xc::progressionLength(progression):0;
   for(auto e:events) { pending.push_back({e.start,e.note,e.velocity/127.0f}); pending.push_back({e.start+e.duration,e.note,0});pendingLength=jmax(pendingLength,e.start+e.duration); }
   std::stable_sort(pending.begin(),pending.end(),[](auto a,auto b){return a.time<b.time;});
   stopRequested=false;loopEnabled=settings.loop;setSoundSettings();previewing=!events.empty();ready=true;
@@ -106,7 +106,7 @@ public:
   xml.setAttribute("instrument",s.instrument);xml.setAttribute("voicing",s.voicing);xml.setAttribute("bassPattern",s.bassPattern);xml.setAttribute("strum",s.strum);xml.setAttribute("nearVoices",s.nearVoices);StringArray fs;for(int f:s.frets)fs.add(String(f));xml.setAttribute("frets",fs.joinIntoString(","));
   xml.setAttribute("timbre",s.timbre);xml.setAttribute("syncTempo",s.syncTempo);
   auto* steps=xml.createNewChildElement("Progression");
-  for(const auto& step:progression){auto* item=steps->createNewChildElement("Step");item->setAttribute("name",String::fromUTF8(step.name.c_str()));item->setAttribute("beats",step.beats);item->setAttribute("velocity",step.velocity);item->setAttribute("root",step.root);item->setAttribute("formula",step.formula);item->setAttribute("scale",step.scale);item->setAttribute("octave",step.octave);item->setAttribute("inversion",step.inversion);item->setAttribute("instrument",step.instrument);item->setAttribute("bassPattern",step.bassPattern);item->setAttribute("strum",step.strum);StringArray frets;for(int f:step.frets)frets.add(String(f));item->setAttribute("frets",frets.joinIntoString(","));StringArray ns;for(int n:step.notes)ns.add(String(n));item->setAttribute("notes",ns.joinIntoString(","));}
+  for(const auto& step:progression){auto* item=steps->createNewChildElement("Step");item->setAttribute("name",String::fromUTF8(step.name.c_str()));item->setAttribute("beats",step.beats);item->setAttribute("rest",step.rest);item->setAttribute("gate",step.gate);item->setAttribute("velocity",step.velocity);item->setAttribute("root",step.root);item->setAttribute("formula",step.formula);item->setAttribute("scale",step.scale);item->setAttribute("octave",step.octave);item->setAttribute("inversion",step.inversion);item->setAttribute("instrument",step.instrument);item->setAttribute("bassPattern",step.bassPattern);item->setAttribute("strum",step.strum);StringArray frets;for(int f:step.frets)frets.add(String(f));item->setAttribute("frets",frets.joinIntoString(","));StringArray ns;for(int n:step.notes)ns.add(String(n));item->setAttribute("notes",ns.joinIntoString(","));}
   StringArray pitches;for(auto n:s.customNotes)pitches.add(String(n));xml.setAttribute("notes",pitches.joinIntoString(","));copyXmlToBinary(xml,data);
  }
  void setStateInformation(const void* data,int size) override {
@@ -128,11 +128,11 @@ public:
   s.timbre=jlimit(0,2,xml->getIntAttribute("timbre"));s.syncTempo=xml->getBoolAttribute("syncTempo",false);
   progression.clear();if(auto* steps=xml->getChildByName("Progression"))for(auto* item:steps->getChildIterator()) {
    if(!item->hasTagName("Step") || progression.size()>=128)continue;
-   xc::ChordStep step;step.name=item->getStringAttribute("name").substring(0,100).toStdString();double beats=item->getDoubleAttribute("beats",4);step.beats=std::isfinite(beats)?jlimit(.25,64.0,beats):4;step.velocity=jlimit(1,127,item->getIntAttribute("velocity",90));
+   xc::ChordStep step;step.rest=item->getBoolAttribute("rest");double gate=item->getDoubleAttribute("gate",1);step.gate=std::isfinite(gate)?jlimit(.05,1.0,gate):1;step.name=item->getStringAttribute("name").substring(0,100).toStdString();double beats=item->getDoubleAttribute("beats",4);step.beats=std::isfinite(beats)?jlimit(.25,64.0,beats):4;step.velocity=jlimit(1,127,item->getIntAttribute("velocity",90));
    step.inversion=jlimit(0,4,item->getIntAttribute("inversion"));step.instrument=jlimit(0,3,item->getIntAttribute("instrument"));step.bassPattern=jlimit(0,2,item->getIntAttribute("bassPattern"));step.strum=item->getBoolAttribute("strum");for(auto token:StringArray::fromTokens(item->getStringAttribute("frets"),",",""))step.frets.push_back(jlimit(-1,12,token.getIntValue()));if(step.frets.size()!=6)step.frets.clear();
    step.root=jlimit(0,11,item->getIntAttribute("root"));step.scale=jlimit(0,1,item->getIntAttribute("scale"));step.formula=jlimit(0,static_cast<int>(xc::catalog(step.scale!=0).size())-1,item->getIntAttribute("formula"));step.octave=jlimit(2,6,item->getIntAttribute("octave",5));
    for(auto token:StringArray::fromTokens(item->getStringAttribute("notes"),",",""))if(token.isNotEmpty() && token.containsOnly("0123456789")){int n=token.getIntValue();if(n>=0 && n<=127)step.notes.push_back(n);}
-   std::sort(step.notes.begin(),step.notes.end());step.notes.erase(std::unique(step.notes.begin(),step.notes.end()),step.notes.end());if(!step.notes.empty())progression.push_back(std::move(step));
+   std::sort(step.notes.begin(),step.notes.end());step.notes.erase(std::unique(step.notes.begin(),step.notes.end()),step.notes.end());if(!step.notes.empty() || step.rest)progression.push_back(std::move(step));
   }
   loopEnabled=s.loop;setSoundSettings();stop();
  }
@@ -239,16 +239,16 @@ public:
   sync.onClick=[this]{processor.settings.syncTempo=sync.getToggleState();processor.setSoundSettings();};
   libraryOpen.onClick=[this]{library.language(processor.settings.language==1);library.setVisible(!library.isVisible());library.toFront(true);};library.close=[this]{library.setVisible(false);};
   library.capture=[this]{return processor.sceneXml();};
-  library.restore=[this](const XmlElement& xml){remember();int lang=processor.settings.language,oct=processor.settings.convention,w=getWidth(),h=getHeight();processor.restoreXml(xml);processor.settings.language=lang;processor.settings.convention=oct;processor.editorWidth=w;processor.editorHeight=h;refresh();};
-  progressionOpen.onClick=[this]{progressionPanel.setVisible(!progressionPanel.isVisible());progressionPanel.refresh();progressionPanel.toFront(false);if(library.isVisible())library.toFront(true);};progressionPanel.onClose=[this]{progressionPanel.setVisible(false);};
-  progressionPanel.beforeEdit=[this]{remember();};progressionPanel.onChanged=[this]{if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
-  progressionPanel.onAdd=[this]{auto pitches=xc::selectedNotes(processor.settings);if(pitches.empty() || processor.progression.size()>=128)return;remember();processor.progression.push_back(currentStep());if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
-  progressionPanel.onReplace=[this](int index){if(xc::selectedNotes(processor.settings).empty())return;remember();auto length=processor.progression[static_cast<size_t>(index)].beats;processor.progression[static_cast<size_t>(index)]=currentStep();processor.progression[static_cast<size_t>(index)].beats=length;if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
+  library.restore=[this](const XmlElement& xml){remember();int lang=processor.settings.language,oct=processor.settings.convention,w=getWidth(),h=getHeight();processor.restoreXml(xml);processor.settings.language=lang;processor.settings.convention=oct;processor.editorWidth=w;processor.editorHeight=h;refresh();if(!processor.progression.empty()){progressionPanel.setVisible(true);progressionPanel.toFront(false);}library.setVisible(false);updateExportButtons();};
+  progressionOpen.onClick=[this]{progressionPanel.setVisible(!progressionPanel.isVisible());progressionPanel.refresh();progressionPanel.toFront(false);if(library.isVisible())library.toFront(true);updateExportButtons();};progressionPanel.onClose=[this]{progressionPanel.setVisible(false);updateExportButtons();};
+  progressionPanel.beforeEdit=[this]{remember();};progressionPanel.onChanged=[this]{updateExportButtons();if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
+  progressionPanel.onAdd=[this]{auto pitches=xc::selectedNotes(processor.settings);if(pitches.empty() || processor.progression.size()>=128)return;remember();processor.progression.push_back(currentStep());if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
+  progressionPanel.onReplace=[this](int index){if(xc::selectedNotes(processor.settings).empty())return;remember();auto length=processor.progression[static_cast<size_t>(index)].beats;auto gate=processor.progression[static_cast<size_t>(index)].gate;processor.progression[static_cast<size_t>(index)]=currentStep();processor.progression[static_cast<size_t>(index)].beats=length;processor.progression[static_cast<size_t>(index)].gate=gate;if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
   progressionPanel.onLoad=[this](int index){remember();auto& step=processor.progression[static_cast<size_t>(index)];auto& s=processor.settings;s.custom=true;s.customNotes=step.notes;s.velocity=step.velocity;s.octave=step.octave;s.root=step.root;s.formula=step.formula;s.scale=step.scale;s.inversion=step.inversion;s.instrument=step.instrument;s.bassPattern=step.bassPattern;s.strum=step.strum;s.frets=step.frets;progressionPanel.setVisible(false);refresh(true);};
   progressionPanel.onPlay=[this]{processor.preview(true);};progressionPanel.onExport=[this]{saveFile(true);};
   progressionPanel.onStop=[this]{processor.stop();};progressionPanel.onLoop=[this](bool enabled){remember();processor.setLoop(enabled);loop.setToggleState(enabled,dontSendNotification);};
-  save.onClick=[this]{saveFile();};
-  drag.drag=[this]{auto f=File::getSpecialLocation(File::tempDirectory).getChildFile("xchords");if(f.createDirectory().failed()){report(false);return;} auto target=f.getNonexistentChildFile("xchords",".mid"); if(xc::writeMidi(target,makeEvents(processor.settings),static_cast<int>(std::lround(processor.settings.syncTempo && processor.hasHostTempo()?processor.effectiveBpm():processor.settings.bpm)))) { bool ok=DragAndDropContainer::performExternalDragDropOfFiles({target.getFullPathName()},false,this); report(ok); } else report(false);};
+  save.onClick=[this]{saveFile(progressionPanel.isVisible());};
+  drag.drag=[this]{auto f=File::getSpecialLocation(File::tempDirectory).getChildFile("xchords");if(f.createDirectory().failed()){report(false);return;} auto target=f.getNonexistentChildFile("xchords",".mid"); bool whole=progressionPanel.isVisible();if(xc::writeMidi(target,whole?xc::progressionEvents(processor.progression):makeEvents(processor.settings),static_cast<int>(std::lround(processor.settings.syncTempo && processor.hasHostTempo()?processor.effectiveBpm():processor.settings.bpm)),whole?xc::progressionLength(processor.progression):0)) { bool ok=DragAndDropContainer::performExternalDragDropOfFiles({target.getFullPathName()},false,this); report(ok); } else report(false);};
   for(auto* c:{&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&timbre,&instrument,&voicing,&bassStyle}){auto callback=c->onChange;c->onChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
   for(auto* b:std::vector<Button*>{&random,&reset,&loop,&sync,&strum,&nearVoices}){auto callback=b->onClick;b->onClick=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
   for(auto* slider:{&velocity,&bpm}){auto callback=slider->onValueChange;slider->onValueChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
@@ -298,7 +298,7 @@ public:
   random.setBounds(36+available-118,96,118,26);lockRoot.setBounds(36+available-290,96,168,26);
   progressionOpen.setBounds(w-610,26,110,28);libraryOpen.setBounds(w-490,26,100,28);undo.setBounds(w-380,26,86,28);redo.setBounds(w-284,26,86,28);
   timbre.setBounds(160,276,140,25);sync.setBounds(310,276,125,25);tempoLabel.setBounds(440,276,left-430,25);
-  progressionPanel.setBounds(20,88,left,h-288);library.setBounds(getLocalBounds().withSizeKeepingCentre(540,340));
+  progressionPanel.setBounds(20,88,left,h-288);library.setBounds(getLocalBounds().withSizeKeepingCentre(780,440));
   int diameter=jmin(right-32,wheelPanel.getHeight()-150);
   wheel.setBounds(wheelPanel.getCentreX()-diameter/2,126,diameter,diameter);
   int buttonWidth=(right-42)/2;save.setBounds(wheelPanel.getX()+16,wheelPanel.getBottom()-46,buttonWidth,30);drag.setBounds(save.getRight()+10,save.getY(),buttonWidth,30);
@@ -345,16 +345,18 @@ private:
   wheel.select(s.custom?String{}:String(xc::referenceCamelot(s)));
   status.setText(s.custom?tr(s.language==1,"Custom · preview and MIDI use exactly the selected notes","Personalizada · prévia e MIDI usam exatamente as notas selecionadas"):tr(s.language==1,"Original selection · ready to edit","Seleção original · pronta para editar"),dontSendNotification);
   if(s.instrument>=2)status.setText(tr(s.language==1,"Bass line · preview and MIDI use the selected pattern","Linha de baixo · prévia e MIDI usam o padrão selecionado"),dontSendNotification);else if(s.instrument==1 && empty)status.setText(tr(s.language==1,"No suggested shape. Click the fretboard to build one.","Sem posição sugerida. Clique no braço para montar uma."),dontSendNotification);
-  if(audition && processor.isPreviewing())processor.preview(progressionPanel.isVisible() && processor.previewIsProgression);updateHistoryButtons();repaint();
+  if(audition && processor.isPreviewing())processor.preview(progressionPanel.isVisible() && processor.previewIsProgression);updateHistoryButtons();updateExportButtons();repaint();
  }
+ void updateExportButtons(){bool enabled=progressionPanel.isVisible()?!xc::progressionEvents(processor.progression).empty():!xc::selectedNotes(processor.settings).empty();save.setEnabled(enabled);drag.setEnabled(enabled);}
  void report(bool ok) {bool pt=processor.settings.language==1;status.setText(ok?tr(pt,"MIDI ready","MIDI pronto"):tr(pt,"Could not create or drag MIDI","Não foi possível criar ou arrastar MIDI"),dontSendNotification);}
  void saveFile(bool wholeProgression=false) {
   const auto snapshot=processor.settings;
   const auto events=wholeProgression?xc::progressionEvents(processor.progression):makeEvents(snapshot);
+  const double length=wholeProgression?xc::progressionLength(processor.progression):0;
   const int tempo=static_cast<int>(std::lround(snapshot.syncTempo && processor.hasHostTempo()?processor.effectiveBpm():snapshot.bpm));
   chooser=std::make_unique<FileChooser>(tr(snapshot.language==1,"Save MIDI","Salvar MIDI"),File::getSpecialLocation(File::userDocumentsDirectory).getChildFile(wholeProgression?"xchords-progression.mid":"xchords.mid"),"*.mid");
   Component::SafePointer<Editor> safe(this);
-  chooser->launchAsync(FileBrowserComponent::saveMode|FileBrowserComponent::canSelectFiles|FileBrowserComponent::warnAboutOverwriting,[safe,events,tempo](const FileChooser& fc){if(safe && fc.getResult()!=File{})safe->report(xc::writeMidi(fc.getResult().withFileExtension("mid"),events,tempo));});
+  chooser->launchAsync(FileBrowserComponent::saveMode|FileBrowserComponent::canSelectFiles|FileBrowserComponent::warnAboutOverwriting,[safe,events,tempo,length](const FileChooser& fc){if(safe && fc.getResult()!=File{})safe->report(xc::writeMidi(fc.getResult().withFileExtension("mid"),events,tempo,length));});
  }
  void remember(){MemoryBlock state;processor.getStateInformation(state);if(undoStates.empty() || undoStates.back()!=state){undoStates.push_back(std::move(state));if(undoStates.size()>128)undoStates.erase(undoStates.begin());}redoStates.clear();updateHistoryButtons();}
  void updateHistoryButtons(){undo.setEnabled(!undoStates.empty());redo.setEnabled(!redoStates.empty());}

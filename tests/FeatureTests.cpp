@@ -46,7 +46,7 @@ void runFeatureTests(const juce::File& folder) {
  auto midiFile=folder.getChildFile("progression-C-G.mid");require(xc::writeMidi(midiFile,events,120),"Export progression MIDI");MidiFile midi;auto input=midiFile.createInputStream();require(input && midi.readFrom(*input),"Read progression MIDI");require(midi.getLastTimestamp()==4800,"Progression is exactly five beats");
  int ons=0,offs=0;for(int i=0;i<midi.getTrack(0)->getNumEvents();++i){auto m=midi.getTrack(0)->getEventPointer(i)->message;if(m.isNoteOn()){require(m.getTimeStamp()==(ons<3?0:1920),"Step onsets in MIDI");++ons;}if(m.isNoteOff())++offs;}require(ons==6 && offs==6,"Balanced progression MIDI events");
  // Run the actual preset UI against an isolated test directory, not AppData.
- File libraryFolder=folder.getChildFile("presets-"+Uuid().toString());LibraryPanel library(libraryFolder);library.setSize(540,340);
+ File libraryFolder=folder.getChildFile("presets-"+Uuid().toString());LibraryPanel library(libraryFolder);library.setSize(780,440);
  library.capture=[&]{return state(*p);};library.restore=[&](const XmlElement& xml){restore(*second,xml);};
  auto* name=dynamic_cast<TextEditor*>(find(library,"preset-name"));require(name,"Preset name");name->setText(String::fromUTF8("Minha progressão"));push(library,"preset-save");push(library,"preset-favourite");
  PresetLibrary disk(libraryFolder);auto favourites=disk.list(true);require(favourites.size()==1 && favourites[0].name==String::fromUTF8("Minha progressão"),"Favourite persisted with UTF-8 name");

@@ -30,6 +30,21 @@ Os links de download no site apontam para assets públicos da release `latest`; 
 - Tema próprio (`src/Theme.h`) com painéis escuros, controles arredondados, contraste de foco e destaque verde para reprodução e notas selecionadas. Idiomas PT/EN preservados.
 - Testes de layout em 1020 × 720, 1180 × 800 e 1600 × 1000, incluindo cliques após redimensionamento e restauração das dimensões. O redimensionamento dentro do Ableton ainda requer validação no host.
 
+## Versão 0.5 — Banco eletrônico de presets
+
+**1.520 presets MIDI**, incluindo **960 da família psy**, incorporados ao VST3 e ao standalone. São variações procedurais originais de motivos, registros, ritmos, intensidades e durações; não são timbres nem transcrições de músicas. A audição usa os três timbres já disponíveis. Na DAW, escolha o sintetizador que receberá o arquivo MIDI.
+
+- Organização: `INSTRUMENTO - FUNÇÃO - GÊNERO - IDEIA`, por exemplo `PIANO - BASS - PSYTRANCE FULL-ON - Rolling Pulse` e `GUITAR - LEAD - PSYTRANCE FOREST - Spiral Signal`.
+- 38 categorias, com 40 presets cada. Teclado: bass, lead, arp, chords e pad; guitarra: lead, arp e chords; baixos de 4 e 5 cordas: bass. Cada combinação tem quatro variações.
+- Psy: Classic, Progressive, Full-On, Morning, Night, Twilight, Goa, Neo-Goa, Darkpsy, Forest, Dark Forest, Hi-Tech, Psycore, Zenonesque, Psytech, Suomi, Hypnotic, Raw, Tribal e Nitzhonot; inclui também ideias relacionadas a Psydub, Psybient e Psybreaks. Outras categorias incluem techno, house, trance, breakbeat, drum and bass e dubstep.
+- Em **Presets**, combine filtros de instrumento, função e gênero ou busque palavras como `guitar lead forest`. Marque favoritos e salve suas alterações como novos presets. O banco original permanece intacto; favoritos ficam no arquivo local `factory-favourites.xml`.
+- **Carregar sequência** abre a progressão. Clique em **Ouvir sequência**, ajuste o BPM e use Loop. As frases têm 2 ou 4 compassos em 4/4. Notas, pausas e durações continuam editáveis; **Gate** determina a porcentagem do passo durante a qual a nota soa.
+- Com a progressão aberta, **Salvar MIDI** e **Arrastar MIDI** exportam a sequência inteira, incluindo o silêncio até o fim do último compasso. Ao fechar a progressão, exportam a seleção atual do instrumento. Para editar uma nota da frase, selecione seu passo, use **Editar notas**, altere o teclado/braço e volte para **Substituir**.
+
+Os nomes de estilos e BPM são sugestões criativas editáveis, não definições rígidas. O [Psytrance Guide](https://psytranceguide.com/) serviu de referência de nomenclatura; nenhum áudio ou melodia foi copiado. O catálogo completo está em `resources/factory-catalog.json`. Para regenerar os recursos de forma determinística: `python scripts/GenerateFactoryPresets.py`. Python não é necessário para usar o plugin.
+
+Validação 0.5: compilação Windows x64 de VST3 e standalone; três suites CTest, incluindo restauração pelo processador e exportação/leitura MIDI dos 1.520 presets, duração completa dos compassos, filtros combinados, busca e persistência dos favoritos. Geração reproduzível conferida por SHA-256. A validação automatizada não substitui audição musical individual de cada variação; o arraste na DAW requer conferência no host real.
+
 ## Versão 0.4 — Instrumentos (segunda etapa do Xchords)
 
 - O seletor acima do teclado alterna entre **Teclado**, **Guitarra / violão**, **Baixo de 4 cordas** e **Baixo de 5 cordas**. O timbre de audição continua independente dessa escolha.
@@ -50,7 +65,7 @@ Os links de download no site apontam para assets públicos da release `latest`; 
 - **BPM da DAW:** opção para acompanhar o tempo informado pelo host, inclusive mudanças durante a prévia. Sem host ou sem BPM disponível, usa o valor manual. A sincronização é de tempo; iniciar/parar o transporte da DAW não inicia/paralisa a prévia.
 - **Progressões:** adicione a seleção atual, reordene ou remova passos e escolha a duração individual entre 0,25 e 32 tempos. Até 128 passos. A reprodução da sequência usa notas em bloco e permite loop.
 - Para alterar um passo, selecione-o e use a edição de notas. Ajuste o teclado, volte à progressão e substitua o passo selecionado; sua duração é mantida.
-- **Exportar MIDI** no painel de progressão gera a sequência inteira em um arquivo, com um ciclo e as durações individuais. Os botões principais de salvar/arrastar continuam exportando a seleção do teclado.
+- **Exportar MIDI** no painel de progressão gera a sequência inteira em um arquivo, com um ciclo e as durações individuais. A partir da versão 0.5, os botões principais de salvar/arrastar também exportam a sequência quando a progressão está aberta.
 
 Os testes usam um host simulado para validar BPM e mudanças de tempo. A integração com o Ableton real continua pendente.
 

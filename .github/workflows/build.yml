@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['src/**', 'tests/**', 'scripts/**', 'CMakeLists.txt', 'Build.ps1', '.github/workflows/build.yml']
+    paths: ['src/**', 'tests/**', 'scripts/**', 'resources/**', 'CMakeLists.txt', 'Build.ps1', '.github/workflows/build.yml']
   pull_request:
     branches: [main]
   workflow_dispatch:
