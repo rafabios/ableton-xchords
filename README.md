@@ -30,7 +30,19 @@ Os links de download no site apontam para assets públicos da release `latest`; 
 - Tema próprio (`src/Theme.h`) com painéis escuros, controles arredondados, contraste de foco e destaque verde para reprodução e notas selecionadas. Idiomas PT/EN preservados.
 - Testes de layout em 1020 × 720, 1180 × 800 e 1600 × 1000, incluindo cliques após redimensionamento e restauração das dimensões. O redimensionamento dentro do Ableton ainda requer validação no host.
 
-## Versão 0.3 — Biblioteca, audição e progressões
+## Versão 0.4 — Instrumentos (segunda etapa do Xchords)
+
+- O seletor acima do teclado alterna entre **Teclado**, **Guitarra / violão**, **Baixo de 4 cordas** e **Baixo de 5 cordas**. O timbre de audição continua independente dessa escolha.
+- Guitarra usa afinação padrão E2–A2–D3–G3–B3–E4; baixo de 4 cordas E1–A1–D2–G2; baixo de 5 cordas B0–E1–A1–D2–G2 (nomes com MIDI 60 = C4). O braço mostra casas 0–12, cordas agudas em cima, graves embaixo. Passe o mouse para ver letras, solfejo, equivalências e número MIDI.
+- **Posição** oferece até 64 disposições por acorde, com fundamental no baixo, todas as classes de altura da fórmula e abertura máxima de quatro casas pressionadas. Cordas soltas não entram nesse limite. As sugestões não modelam dedos, pestanas ou conforto individual. Sem posição disponível, monte uma manualmente.
+- No modo acorde da guitarra, clique numa casa para definir a nota daquela corda; clicar novamente a silencia. As notas preenchidas são a posição ativa; os círculos vazados mostram outras casas das mesmas classes de altura. Em escalas e no baixo, cliques incluem/removem alturas MIDI; a mesma altura pode aparecer em mais de uma corda.
+- **Strum** desloca os ataques de grave para agudo em até 0,04 tempo por nota e mantém o fim do acorde na duração escolhida. Sem Strum, permanecem os padrões de execução anteriores. Notas em uníssono são consolidadas no MIDI.
+- Baixo gera linhas monofônicas em três modos: **Fundamental**, **Fundamental / quinta / oitava** e **Notas selecionadas**. Para percorrer graus de uma escala, escolha o modo Escalas e o terceiro padrão. A duração divide o ciclo entre as notas. Se uma quinta não existir na seleção, repete a fundamental. A lista de notas mostra as alturas efetivamente geradas.
+- **Aproximar vozes · progressão** ajusta os passos existentes e os adicionados/substituídos/reordenados: busca posições de guitarra com menor movimento, inversões/oitavas próximas no teclado e registros próximos no baixo. Preserva as classes de altura; não promete uma solução global ótima. Desfazer reverte a alteração; desligar a opção mantém os ajustes já feitos.
+- Cada passo guarda instrumento, notas, casas, padrão de baixo e Strum. Ouvir, loop e exportação usam esses dados; uma progressão pode misturar instrumentos. Os três timbres de prévia continuam sintetizados, sem samples realistas de guitarra ou baixo.
+- Oitava e inversão manuais são controles do teclado; os instrumentos de corda usam sua própria extensão e posições. Presets anteriores abrem como teclado. Afinações alternativas e ukulele ficam para uma próxima etapa.
+
+### Biblioteca, audição e progressões (0.3)
 
 - **Presets e favoritos:** abra a biblioteca, dê um nome e salve a cena completa, incluindo notas, timbre e progressão. Marque favoritos e filtre a lista. Arquivos locais em `%APPDATA%/Vemcompy Labs/Xchords/Presets`. Carregar preserva idioma, convenção de oitava e tamanho da janela atuais.
 - **Desfazer/refazer:** histórico de até 128 alterações enquanto o editor estiver aberto. O histórico não é salvo na sessão; a cena musical é.
@@ -102,7 +114,7 @@ O arraste e o carregamento do VST3 precisam de validação manual na DAW de dest
 1. Intervalos e grafia contextual correta (incluindo acidentes duplos).
 2. Transições entre posições e condução de vozes nas progressões.
 3. Sorteio de acordes restrito a uma escala, padrões rítmicos e voicings abertos.
-4. Perfis de instrumento: teclado, guitarra, baixo e ukulele. Cada perfil determina extensão, afinação, posições e regras de execução; todos usam o mesmo núcleo musical e saída MIDI.
+4. Ukulele, afinações alternativas e digitação com pestanas. Teclado, guitarra e baixo já compartilham o núcleo de notas e MIDI.
 5. Integrações específicas com DAWs para trabalhar com clips existentes, se necessário.
 
 Referência de produto: https://chords.jpglomot.com/. Nenhum código, áudio ou banco de dados foi copiado do site.
@@ -114,3 +126,5 @@ Build Debug Windows x64 concluído para standalone e VST3. CTest: 2/2 suites pas
 A versão 0.2 acrescenta testes para as 24 correspondências Camelot, cliques em teclas brancas/pretas e setores da roda, troca de nota durante a reprodução, exportação das notas personalizadas, loop além do primeiro ciclo, desligamento de loop, Parar/cancelamento de prévia pendente, restauração de notas e seleção vazia.
 
 A versão 0.3 acrescenta testes de presets/favoritos persistentes, desfazer/refazer, edição e restauração de progressões, MIDI com duração total conferida, timbres distintos, destaque das teclas e BPM de host simulado com fallback manual.
+
+A versão 0.4 acrescenta uma terceira suíte com afinações, posições em todas as fundamentais, limites do braço, edição de cordas, strum, padrões de baixo, condução de vozes e duração de progressões mistas. Os testes de interface cobrem alternância de instrumentos, histórico, estado antigo/novo e leitura de MIDI exportado. Capturas em 1020×720, 1180×800 e 1600×1000. Validação dentro do Ableton continua separada dos testes automatizados.

@@ -4,6 +4,7 @@
 #include <iostream>
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 void runFeatureTests(const juce::File& folder);
+void runInstrumentUiTests(const juce::File& folder);
 void require(bool ok,const char* message) {if(!ok)throw std::runtime_error(message);}
 std::unique_ptr<juce::FileOutputStream> imageOutput(const juce::File& file) {
  auto out=file.createOutputStream();if(out){out->setPosition(0);out->truncate();}return out;
@@ -82,6 +83,6 @@ int main(int argc,char** argv) {
   }
   processor->getStateInformation(state);restored->setStateInformation(state.getData(),static_cast<int>(state.getSize()));
   std::unique_ptr<AudioProcessorEditor> restoredEditor(restored->createEditorAndMakeActive());require(restoredEditor->getWidth()==1600 && restoredEditor->getHeight()==1000,"Window size persists");
-  processor->releaseResources();runFeatureTests(folder);std::cout<<"MIDI, audio, state, Camelot, keyboard, loop, resizing, presets, history, DAW tempo and progressions OK\n";
+  processor->releaseResources();runFeatureTests(folder);runInstrumentUiTests(folder);std::cout<<"MIDI, audio, state, Camelot, keyboard, loop, resizing, presets, history, DAW tempo and progressions OK\n";
  } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

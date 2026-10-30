@@ -7,6 +7,7 @@
 #include "PresetLibrary.h"
 #include "LibraryPanel.h"
 #include "ProgressionPanel.h"
+#include "Fretboard.h"
 #include <array>
 #include <atomic>
 using namespace juce;
@@ -102,9 +103,10 @@ public:
   xml.setAttribute("octave",s.octave); xml.setAttribute("convention",s.convention); xml.setAttribute("inversion",s.inversion); xml.setAttribute("pattern",s.pattern);
   xml.setAttribute("duration",s.duration); xml.setAttribute("velocity",s.velocity); xml.setAttribute("bpm",s.bpm);
   xml.setAttribute("custom",s.custom);xml.setAttribute("loop",s.loop);
+  xml.setAttribute("instrument",s.instrument);xml.setAttribute("voicing",s.voicing);xml.setAttribute("bassPattern",s.bassPattern);xml.setAttribute("strum",s.strum);xml.setAttribute("nearVoices",s.nearVoices);StringArray fs;for(int f:s.frets)fs.add(String(f));xml.setAttribute("frets",fs.joinIntoString(","));
   xml.setAttribute("timbre",s.timbre);xml.setAttribute("syncTempo",s.syncTempo);
   auto* steps=xml.createNewChildElement("Progression");
-  for(const auto& step:progression){auto* item=steps->createNewChildElement("Step");item->setAttribute("name",String::fromUTF8(step.name.c_str()));item->setAttribute("beats",step.beats);item->setAttribute("velocity",step.velocity);item->setAttribute("root",step.root);item->setAttribute("formula",step.formula);item->setAttribute("scale",step.scale);item->setAttribute("octave",step.octave);StringArray ns;for(int n:step.notes)ns.add(String(n));item->setAttribute("notes",ns.joinIntoString(","));}
+  for(const auto& step:progression){auto* item=steps->createNewChildElement("Step");item->setAttribute("name",String::fromUTF8(step.name.c_str()));item->setAttribute("beats",step.beats);item->setAttribute("velocity",step.velocity);item->setAttribute("root",step.root);item->setAttribute("formula",step.formula);item->setAttribute("scale",step.scale);item->setAttribute("octave",step.octave);item->setAttribute("instrument",step.instrument);item->setAttribute("bassPattern",step.bassPattern);item->setAttribute("strum",step.strum);StringArray frets;for(int f:step.frets)frets.add(String(f));item->setAttribute("frets",frets.joinIntoString(","));StringArray ns;for(int n:step.notes)ns.add(String(n));item->setAttribute("notes",ns.joinIntoString(","));}
   StringArray pitches;for(auto n:s.customNotes)pitches.add(String(n));xml.setAttribute("notes",pitches.joinIntoString(","));copyXmlToBinary(xml,data);
  }
  void setStateInformation(const void* data,int size) override {
@@ -122,10 +124,12 @@ public:
    auto n=token.getIntValue();if(n>=0 && n<=127)s.customNotes.push_back(n);
   }
   std::sort(s.customNotes.begin(),s.customNotes.end());s.customNotes.erase(std::unique(s.customNotes.begin(),s.customNotes.end()),s.customNotes.end());
+  s.instrument=jlimit(0,3,xml->getIntAttribute("instrument"));s.voicing=jlimit(0,63,xml->getIntAttribute("voicing"));s.bassPattern=jlimit(0,2,xml->getIntAttribute("bassPattern"));s.strum=xml->getBoolAttribute("strum");s.nearVoices=xml->getBoolAttribute("nearVoices");s.frets.clear();for(auto token:StringArray::fromTokens(xml->getStringAttribute("frets"),",",""))s.frets.push_back(jlimit(-1,12,token.getIntValue()));if(s.frets.size()!=6)s.frets.clear();
   s.timbre=jlimit(0,2,xml->getIntAttribute("timbre"));s.syncTempo=xml->getBoolAttribute("syncTempo",false);
   progression.clear();if(auto* steps=xml->getChildByName("Progression"))for(auto* item:steps->getChildIterator()) {
    if(!item->hasTagName("Step") || progression.size()>=128)continue;
    xc::ChordStep step;step.name=item->getStringAttribute("name").substring(0,100).toStdString();double beats=item->getDoubleAttribute("beats",4);step.beats=std::isfinite(beats)?jlimit(.25,64.0,beats):4;step.velocity=jlimit(1,127,item->getIntAttribute("velocity",90));
+   step.instrument=jlimit(0,3,item->getIntAttribute("instrument"));step.bassPattern=jlimit(0,2,item->getIntAttribute("bassPattern"));step.strum=item->getBoolAttribute("strum");for(auto token:StringArray::fromTokens(item->getStringAttribute("frets"),",",""))step.frets.push_back(jlimit(-1,12,token.getIntValue()));if(step.frets.size()!=6)step.frets.clear();
    step.root=jlimit(0,11,item->getIntAttribute("root"));step.scale=jlimit(0,1,item->getIntAttribute("scale"));step.formula=jlimit(0,static_cast<int>(xc::catalog(step.scale!=0).size())-1,item->getIntAttribute("formula"));step.octave=jlimit(2,6,item->getIntAttribute("octave",5));
    for(auto token:StringArray::fromTokens(item->getStringAttribute("notes"),",",""))if(token.isNotEmpty() && token.containsOnly("0123456789")){int n=token.getIntValue();if(n>=0 && n<=127)step.notes.push_back(n);}
    std::sort(step.notes.begin(),step.notes.end());step.notes.erase(std::unique(step.notes.begin(),step.notes.end()),step.notes.end());if(!step.notes.empty())progression.push_back(std::move(step));
@@ -191,11 +195,13 @@ public:
   setLookAndFeel(&theme);
   setResizable(true,true);setResizeLimits(1020,720,1800,1200);
   setSize(initialWidth,initialHeight);
-  for(auto* c:std::vector<Component*>{&language,&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&velocity,&bpm,&play,&stop,&random,&undo,&save,&drag,&lockRoot,&keyboard,&notes,&status,&loop,&reset,&wheel,&redo,&libraryOpen,&progressionOpen,&timbre,&sync,&tempoLabel}) addAndMakeVisible(c);
+  for(auto* c:std::vector<Component*>{&language,&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&velocity,&bpm,&play,&stop,&random,&undo,&save,&drag,&lockRoot,&keyboard,&notes,&status,&loop,&reset,&wheel,&redo,&libraryOpen,&progressionOpen,&timbre,&sync,&tempoLabel,&instrument,&voicing,&bassStyle,&strum,&nearVoices,&fretboard}) addAndMakeVisible(c);
   addChildComponent(library);addChildComponent(progressionPanel);
+  instrument.setComponentID("instrument");voicing.setComponentID("voicing");bassStyle.setComponentID("bass-style");strum.setComponentID("strum");nearVoices.setComponentID("near-voices");fretboard.setComponentID("fretboard");
   undo.setComponentID("undo");redo.setComponentID("redo");libraryOpen.setComponentID("library-open");progressionOpen.setComponentID("progression-open");timbre.setComponentID("timbre");sync.setComponentID("sync-tempo");tempoLabel.setComponentID("tempo-status");
   mode.setComponentID("mode");root.setComponentID("root");formula.setComponentID("formula");keyboard.setComponentID("keyboard");notes.setComponentID("notes");
   play.setComponentID("play");stop.setComponentID("stop");loop.setComponentID("loop");reset.setComponentID("reset");
+  fretboard.onToggle=[this](int string,int fret){remember();xc::toggleFret(processor.settings,string,fret);update(true);};
   keyboard.setMouseCursor(MouseCursor::PointingHandCursor);
   keyboard.onToggle=[this](int n){remember();xc::toggleNote(processor.settings,n);update(true);};
   wheel.onSelect=[this](int n,bool minor){remember();auto& s=processor.settings;s.root=xc::camelotRoot(n,minor);s.formula=minor?1:0;s.inversion=0;xc::resetNotes(s);refresh(true);};
@@ -207,6 +213,11 @@ public:
   language.addItem("English",1);language.addItem(String::fromUTF8("Português"),2);
   language.setSelectedId(p.settings.language+1,dontSendNotification);
   language.onChange=[this]{processor.settings.language=language.getSelectedId()-1; refresh();};
+  instrument.onChange=[this]{auto& s=processor.settings;s.instrument=instrument.getSelectedId()-1;xc::resetNotes(s);refresh(true);};
+  voicing.onChange=[this]{auto& s=processor.settings;xc::resetNotes(s);s.voicing=voicing.getSelectedId()-1;update(true);};
+  bassStyle.onChange=[this]{processor.settings.bassPattern=bassStyle.getSelectedId()-1;update(true);};
+  strum.onClick=[this]{processor.settings.strum=strum.getToggleState();update(true);};
+  nearVoices.onClick=[this]{processor.settings.nearVoices=nearVoices.getToggleState();if(processor.settings.nearVoices)xc::leadVoices(processor.progression);progressionPanel.refresh();update();if(processor.isPreviewing())processor.preview(processor.previewIsProgression);};
   mode.onChange=[this]{auto& s=processor.settings;s.scale=mode.getSelectedId()-1;s.formula=0;s.inversion=0;s.pattern=s.scale?1:0;xc::resetNotes(s);refresh(true);};
   root.onChange=[this]{processor.settings.root=root.getSelectedId()-1;xc::resetNotes(processor.settings);refresh(true);};
   formula.onChange=[this]{processor.settings.formula=formula.getSelectedId()-1;processor.settings.inversion=0;xc::resetNotes(processor.settings);refresh(true);};
@@ -230,16 +241,16 @@ public:
   library.capture=[this]{return processor.sceneXml();};
   library.restore=[this](const XmlElement& xml){remember();int lang=processor.settings.language,oct=processor.settings.convention,w=getWidth(),h=getHeight();processor.restoreXml(xml);processor.settings.language=lang;processor.settings.convention=oct;processor.editorWidth=w;processor.editorHeight=h;refresh();};
   progressionOpen.onClick=[this]{progressionPanel.setVisible(!progressionPanel.isVisible());progressionPanel.refresh();progressionPanel.toFront(false);if(library.isVisible())library.toFront(true);};progressionPanel.onClose=[this]{progressionPanel.setVisible(false);};
-  progressionPanel.beforeEdit=[this]{remember();};progressionPanel.onChanged=[this]{if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
-  progressionPanel.onAdd=[this]{auto pitches=xc::selectedNotes(processor.settings);if(pitches.empty() || processor.progression.size()>=128)return;remember();processor.progression.push_back(currentStep());if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
-  progressionPanel.onReplace=[this](int index){if(xc::selectedNotes(processor.settings).empty())return;remember();auto length=processor.progression[static_cast<size_t>(index)].beats;processor.progression[static_cast<size_t>(index)]=currentStep();processor.progression[static_cast<size_t>(index)].beats=length;if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
-  progressionPanel.onLoad=[this](int index){remember();auto& step=processor.progression[static_cast<size_t>(index)];auto& s=processor.settings;s.custom=true;s.customNotes=step.notes;s.velocity=step.velocity;s.octave=step.octave;s.root=step.root;s.formula=step.formula;s.scale=step.scale;progressionPanel.setVisible(false);refresh(true);};
+  progressionPanel.beforeEdit=[this]{remember();};progressionPanel.onChanged=[this]{if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
+  progressionPanel.onAdd=[this]{auto pitches=xc::selectedNotes(processor.settings);if(pitches.empty() || processor.progression.size()>=128)return;remember();processor.progression.push_back(currentStep());if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
+  progressionPanel.onReplace=[this](int index){if(xc::selectedNotes(processor.settings).empty())return;remember();auto length=processor.progression[static_cast<size_t>(index)].beats;processor.progression[static_cast<size_t>(index)]=currentStep();processor.progression[static_cast<size_t>(index)].beats=length;if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();};
+  progressionPanel.onLoad=[this](int index){remember();auto& step=processor.progression[static_cast<size_t>(index)];auto& s=processor.settings;s.custom=true;s.customNotes=step.notes;s.velocity=step.velocity;s.octave=step.octave;s.root=step.root;s.formula=step.formula;s.scale=step.scale;s.instrument=step.instrument;s.bassPattern=step.bassPattern;s.strum=step.strum;s.frets=step.frets;progressionPanel.setVisible(false);refresh(true);};
   progressionPanel.onPlay=[this]{processor.preview(true);};progressionPanel.onExport=[this]{saveFile(true);};
   progressionPanel.onStop=[this]{processor.stop();};progressionPanel.onLoop=[this](bool enabled){remember();processor.setLoop(enabled);loop.setToggleState(enabled,dontSendNotification);};
   save.onClick=[this]{saveFile();};
   drag.drag=[this]{auto f=File::getSpecialLocation(File::tempDirectory).getChildFile("xchords");if(f.createDirectory().failed()){report(false);return;} auto target=f.getNonexistentChildFile("xchords",".mid"); if(xc::writeMidi(target,makeEvents(processor.settings),static_cast<int>(std::lround(processor.settings.syncTempo && processor.hasHostTempo()?processor.effectiveBpm():processor.settings.bpm)))) { bool ok=DragAndDropContainer::performExternalDragDropOfFiles({target.getFullPathName()},false,this); report(ok); } else report(false);};
-  for(auto* c:{&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&timbre}){auto callback=c->onChange;c->onChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
-  for(auto* b:std::vector<Button*>{&random,&reset,&loop,&sync}){auto callback=b->onClick;b->onClick=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
+  for(auto* c:{&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&timbre,&instrument,&voicing,&bassStyle}){auto callback=c->onChange;c->onChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
+  for(auto* b:std::vector<Button*>{&random,&reset,&loop,&sync,&strum,&nearVoices}){auto callback=b->onClick;b->onClick=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
   for(auto* slider:{&velocity,&bpm}){auto callback=slider->onValueChange;slider->onValueChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
   refresh();startTimerHz(30);
  }
@@ -255,7 +266,7 @@ public:
   auto title=[&](const String& text,Rectangle<int> r){g.setColour(Colour(0xff8fa5bf));g.setFont(FontOptions(11.0f,Font::bold));g.drawText(text,r.getX()+16,r.getY()+8,r.getWidth()-32,20,Justification::centredLeft);};
   title(tr(pt,"01   HARMONY","01   HARMONIA"),harmonyPanel);title(tr(pt,"02   AUDITION","02   AUDIÇÃO"),performancePanel);
   title(tr(pt,"SELECTED NOTES","NOTAS SELECIONADAS"),notesPanel);title("CAMELOT",wheelPanel);
-  title(tr(pt,"KEYBOARD   /   Click to add or remove notes","TECLADO   /   Clique para incluir ou remover notas"),keyboardPanel);
+
   const char* en[]={"Mode","Root","Chord / scale","Octave","Middle C","Inversion","Playback","Beats","Velocity","BPM"};
   const char* br[]={"Modo","Fundamental","Acorde / escala","Oitava","Dó central","Inversão","Execução","Tempos","Intensidade","BPM"};
   g.setColour(Colour(0xff9aacc2));g.setFont(12.0f);
@@ -292,21 +303,24 @@ public:
   wheel.setBounds(wheelPanel.getCentreX()-diameter/2,126,diameter,diameter);
   int buttonWidth=(right-42)/2;save.setBounds(wheelPanel.getX()+16,wheelPanel.getBottom()-46,buttonWidth,30);drag.setBounds(save.getRight()+10,save.getY(),buttonWidth,30);
   notes.setBounds(notesPanel.reduced(16).withTrimmedTop(20));
+  instrument.setBounds(36,h-181,180,25);voicing.setBounds(228,h-181,160,25);bassStyle.setBounds(228,h-181,230,25);strum.setBounds(400,h-181,100,25);nearVoices.setBounds(w-300,h-181,264,25);fretboard.setBounds(36,h-154,w-72,110);
   keyboard.setBounds(36,h-154,w-72,110);status.setBounds(20,h-27,w-160,22);
  }
 private:
  Processor& processor;
  std::vector<MemoryBlock> undoStates,redoStates;
  XChordsTheme theme;
+ TooltipWindow tooltips{this,500};
  Rectangle<int> harmonyPanel,performancePanel,notesPanel,wheelPanel,keyboardPanel;
- ComboBox language,mode,root,formula,octave,convention,inversion,pattern,duration,timbre;
- Slider velocity,bpm; TextButton play,stop,random,undo,redo,save,reset,libraryOpen,progressionOpen;DragButton drag;ToggleButton lockRoot,loop,sync;Keyboard keyboard;CamelotWheel wheel;TextEditor notes;Label status,tempoLabel;
+ ComboBox language,mode,root,formula,octave,convention,inversion,pattern,duration,timbre,instrument,voicing,bassStyle;
+ Slider velocity,bpm; TextButton play,stop,random,undo,redo,save,reset,libraryOpen,progressionOpen;DragButton drag;ToggleButton lockRoot,loop,sync,strum,nearVoices;Fretboard fretboard;Keyboard keyboard;CamelotWheel wheel;TextEditor notes;Label status,tempoLabel;
  LibraryPanel library;ProgressionPanel progressionPanel;
  std::array<Rectangle<int>,10> fields;std::unique_ptr<FileChooser> chooser;
  void fill(ComboBox& c,const StringArray& values,int selected) {c.clear(dontSendNotification);c.addItemList(values,1);c.setSelectedId(selected+1,dontSendNotification);}
  void refresh(bool audition=false) {
   auto& s=processor.settings;bool pt=s.language==1;
   language.setSelectedId(s.language+1,dontSendNotification);
+  fill(instrument,{tr(pt,"Keyboard","Teclado"),tr(pt,"Guitar / acoustic","Guitarra / violão"),tr(pt,"Bass · 4 strings","Baixo · 4 cordas"),tr(pt,"Bass · 5 strings","Baixo · 5 cordas")},s.instrument);fill(bassStyle,{tr(pt,"Root","Fundamental"),tr(pt,"Root / fifth / octave","Fundamental / quinta / oitava"),tr(pt,"Selected tones","Notas selecionadas")},s.bassPattern);strum.setButtonText("Strum");strum.setToggleState(s.strum,dontSendNotification);nearVoices.setButtonText(tr(pt,"Close voices · progression","Aproximar vozes · progressão"));nearVoices.setToggleState(s.nearVoices,dontSendNotification);StringArray positions;if(s.instrument==1 && !s.scale){auto shapes=xc::guitarShapes(s.root,xc::catalog(false)[static_cast<size_t>(s.formula)]);for(size_t i=0;i<shapes.size();++i)positions.add(tr(pt,"Position ","Posição ")+String(static_cast<int>(i+1)));}fill(voicing,positions,s.voicing);
   fill(mode,{tr(pt,"Chords","Acordes"),tr(pt,"Scales","Escalas")},s.scale);
   StringArray roots;for(int n=0;n<12;++n) {auto name=String::fromUTF8(xc::noteNames(60+n).c_str()); name=name.upToFirstOccurrenceOf(String::fromUTF8(" · MIDI"),false,false).removeCharacters("4");roots.add(name);}fill(root,roots,s.root);
   StringArray formulas;for(const auto& f:xc::catalog(s.scale!=0))formulas.add(String::fromUTF8((pt?f.pt:f.en).c_str()));fill(formula,formulas,s.formula);
@@ -323,12 +337,14 @@ private:
   loop.setButtonText("Loop");loop.setToggleState(s.loop,dontSendNotification);processor.setLoop(s.loop);reset.setButtonText(tr(pt,"Restore original","Restaurar original"));update(audition);
  }
  void update(bool audition=false) {
-  auto& s=processor.settings;StringArray lines;keyboard.notes=xc::selectedNotes(s);for(auto n:keyboard.notes)lines.add(String::fromUTF8(xc::noteNames(n,s.convention).c_str()));
-  bool empty=keyboard.notes.empty();play.setEnabled(!empty);save.setEnabled(!empty);drag.setEnabled(!empty);reset.setEnabled(s.custom);inversion.setEnabled(!s.scale && !s.custom);
+  auto& s=processor.settings;StringArray lines;keyboard.notes=xc::selectedNotes(s);auto displayNotes=keyboard.notes;if(s.instrument>=2){displayNotes.clear();for(auto e:makeEvents(s))displayNotes.push_back(e.note);displayNotes=xc::uniqueNotes(displayNotes);}for(auto n:displayNotes)lines.add(String::fromUTF8(xc::noteNames(n,s.convention).c_str()));
+  bool empty=keyboard.notes.empty();play.setEnabled(!empty);save.setEnabled(!empty);drag.setEnabled(!empty);reset.setEnabled(s.custom);inversion.setEnabled(!s.scale && !s.custom && s.instrument==0);octave.setEnabled(s.instrument==0);pattern.setEnabled(s.instrument<2 && !(s.instrument==1 && s.strum));
+  keyboard.setVisible(s.instrument==0);fretboard.setVisible(s.instrument!=0);voicing.setVisible(s.instrument==1 && !s.scale);voicing.setEnabled(!s.custom && voicing.getNumItems()>0);strum.setVisible(s.instrument==1 && !s.scale);bassStyle.setVisible(s.instrument>=2);fretboard.updateSettings(s);
   notes.setText(empty?tr(s.language==1,"No notes selected. Click the keyboard.","Nenhuma nota selecionada. Clique no teclado."):lines.joinIntoString("     |     "),false);
   keyboard.start=s.octave*12;keyboard.convention=s.convention;keyboard.repaint();
   wheel.select(s.custom?String{}:String(xc::referenceCamelot(s)));
   status.setText(s.custom?tr(s.language==1,"Custom · preview and MIDI use exactly the selected notes","Personalizada · prévia e MIDI usam exatamente as notas selecionadas"):tr(s.language==1,"Original selection · ready to edit","Seleção original · pronta para editar"),dontSendNotification);
+  if(s.instrument>=2)status.setText(tr(s.language==1,"Bass line · preview and MIDI use the selected pattern","Linha de baixo · prévia e MIDI usam o padrão selecionado"),dontSendNotification);else if(s.instrument==1 && empty)status.setText(tr(s.language==1,"No suggested shape. Click the fretboard to build one.","Sem posição sugerida. Clique no braço para montar uma."),dontSendNotification);
   if(audition && processor.isPreviewing())processor.preview(progressionPanel.isVisible() && processor.previewIsProgression);updateHistoryButtons();repaint();
  }
  void report(bool ok) {bool pt=processor.settings.language==1;status.setText(ok?tr(pt,"MIDI ready","MIDI pronto"):tr(pt,"Could not create or drag MIDI","Não foi possível criar ou arrastar MIDI"),dontSendNotification);}
@@ -343,9 +359,9 @@ private:
  void remember(){MemoryBlock state;processor.getStateInformation(state);if(undoStates.empty() || undoStates.back()!=state){undoStates.push_back(std::move(state));if(undoStates.size()>128)undoStates.erase(undoStates.begin());}redoStates.clear();updateHistoryButtons();}
  void updateHistoryButtons(){undo.setEnabled(!undoStates.empty());redo.setEnabled(!redoStates.empty());}
  void travelHistory(bool forward){auto& from=forward?redoStates:undoStates;auto& to=forward?undoStates:redoStates;if(from.empty())return;bool wasPlaying=processor.isPreviewing(),whole=processor.previewIsProgression;MemoryBlock current;processor.getStateInformation(current);to.push_back(std::move(current));auto state=std::move(from.back());from.pop_back();int width=getWidth(),height=getHeight();processor.setStateInformation(state.getData(),static_cast<int>(state.getSize()));processor.editorWidth=width;processor.editorHeight=height;refresh();if(wasPlaying)processor.preview(whole);}
- xc::ChordStep currentStep()const {auto& s=processor.settings;xc::ChordStep step;step.notes=xc::selectedNotes(s);step.velocity=s.velocity;step.root=s.root;step.formula=s.formula;step.scale=s.scale;step.octave=s.octave;String label=root.getText()+" "+formula.getText();if(s.custom)label+=tr(s.language==1," (custom)"," (personalizado)");step.name=label.toStdString();return step;}
+ xc::ChordStep currentStep()const {auto& s=processor.settings;xc::ChordStep step;step.notes=xc::selectedNotes(s);step.velocity=s.velocity;step.root=s.root;step.formula=s.formula;step.scale=s.scale;step.octave=s.octave;step.instrument=s.instrument;step.bassPattern=s.bassPattern;step.strum=s.strum;if(s.instrument==1)step.frets=xc::selectedFrets(s);String label=root.getText()+" "+formula.getText();if(s.custom)label+=tr(s.language==1," (custom)"," (personalizado)");if(s.instrument!=0)label+=" · "+instrument.getText();step.name=label.toStdString();return step;}
  void timerCallback() override {
-  bool changed=false;for(int n=0;n<128;++n){bool playing=processor.noteIsPlaying(n);if(keyboard.sounding[static_cast<size_t>(n)]!=playing){keyboard.sounding[static_cast<size_t>(n)]=playing;changed=true;}}if(changed)keyboard.repaint();
+  bool changed=false;for(int n=0;n<128;++n){bool playing=processor.noteIsPlaying(n);if(keyboard.sounding[static_cast<size_t>(n)]!=playing){keyboard.sounding[static_cast<size_t>(n)]=playing;changed=true;}}if(changed){keyboard.repaint();fretboard.sounding=keyboard.sounding;fretboard.repaint();}
   const auto& s=processor.settings;String label;if(s.syncTempo)label=processor.hasHostTempo()?"DAW: "+String(processor.effectiveBpm(),1):tr(s.language==1,"Manual (no host)","Manual (sem host)");tempoLabel.setText(label,dontSendNotification);bpm.setEnabled(!s.syncTempo || !processor.hasHostTempo());
  }
 };
