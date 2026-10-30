@@ -2,6 +2,7 @@
 #include "LibraryPanel.h"
 #include "MusicalState.h"
 #include "MidiExport.h"
+#include "MidiDragButton.h"
 #include <iostream>
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 void require(bool,const char*);
@@ -41,5 +42,20 @@ void runFactoryPresetTests(const juce::File& folder) {
  xc::ChordStep note;note.notes={36};note.beats=.25;note.gate=.5;xc::ChordStep rest;rest.rest=true;rest.beats=.75;
  auto gated=xc::progressionEvents({note,rest});require(gated.size()==1 && gated.front().duration==.125 && xc::progressionLength({note,rest})==1,"Gate shortens note while trailing rest preserves cycle");
  require(xc::progressionEvents({rest}).empty(),"Rest emits no MIDI note");
+ // Reproduce the DAW report through the real editor's drag-file preparation:
+ // load a one-pitch rolling bass preset, close the progression, then drag.
+ std::unique_ptr<AudioProcessorEditor> ui(processor->createEditorAndMakeActive());
+ dynamic_cast<Button*>(find(*ui,"library-open"))->onClick();
+ auto* browser=dynamic_cast<TextEditor*>(find(*ui,"preset-search"));browser->setText("BASS 4 - BASS - PSYTRANCE - Rolling Pulse",false);browser->onTextChange();
+ auto* choices=dynamic_cast<ComboBox*>(find(*ui,"preset-list"));bool exact=false;for(int i=0;i<choices->getNumItems();++i)if(choices->getItemText(i).endsWith("BASS 4 - BASS - PSYTRANCE - Rolling Pulse")){choices->setSelectedItemIndex(i,sendNotificationSync);exact=true;}if(!exact){std::cerr<<"Factory matches: "<<choices->getNumItems()<<"\n";for(int i=0;i<choices->getNumItems();++i)std::cerr<<choices->getItemText(i)<<"\n";}require(exact,"Find exact rolling bass preset");
+ dynamic_cast<Button*>(find(*ui,"preset-load"))->onClick();
+ dynamic_cast<Button*>(find(*ui,"progression-close"))->onClick();
+ auto verifyDrag=[&](int expected,double end){auto* button=dynamic_cast<DragButton*>(find(*ui,"midi-drag"));require(button && button->prepareMidi,"Real drag preparation available");auto file=button->prepareMidi();auto input=file.createInputStream();MidiFile midi;require(input && midi.readFrom(*input),"Read actual drag payload");int ons=0,offs=0;for(int i=0;i<midi.getTrack(0)->getNumEvents();++i){auto& message=midi.getTrack(0)->getEventPointer(i)->message;ons+=message.isNoteOn()?1:0;offs+=message.isNoteOff()?1:0;}require(ons==expected && offs==expected && midi.getLastTimestamp()==end,"Drag retains expected attacks, releases and full loop duration");};
+ require(dynamic_cast<ComboBox*>(find(*ui,"output-mode"))->getSelectedId()==1,"Closing progression retains full-sequence output");verifyDrag(24,7680);
+ require(dynamic_cast<Button*>(find(*ui,"play"))->getButtonText()==String::fromUTF8("Ouvir sequência"),"Audition follows full-sequence output");
+ auto screen=imageOutput(folder.getChildFile("bass-sequence-output.png"));require(screen && png.writeImageToStream(ui->createComponentSnapshot(ui->getLocalBounds()),*screen),"Sequence output screenshot");screen.reset();
+ processor->editorBeingDeleted(ui.get());ui.reset();ui.reset(processor->createEditorAndMakeActive());verifyDrag(24,7680);
+ dynamic_cast<ComboBox*>(find(*ui,"output-mode"))->setSelectedId(2,sendNotificationSync);verifyDrag(1,960);
+ dynamic_cast<Button*>(find(*ui,"library-open"))->onClick();browser=dynamic_cast<TextEditor*>(find(*ui,"preset-search"));browser->setText("BASS 4 - BASS - PSYTRANCE - Rolling Pulse",false);browser->onTextChange();dynamic_cast<Button*>(find(*ui,"preset-load"))->onClick();verifyDrag(24,7680);
  std::cout<<"1520 factory presets restored and MIDI-exported; 960 psy presets; filters, favourites, rests and gates OK\n";
 }

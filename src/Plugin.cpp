@@ -1,3 +1,4 @@
+#include "MidiDragButton.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "Theory.h"
 #include "MidiExport.h"
@@ -183,11 +184,6 @@ public:
   g.drawText(String(names[n%12])+String(n/12-5+convention),r.removeFromBottom(23),Justification::centred);
  }
 };
-class DragButton final : public TextButton {
-public: std::function<void()> drag; bool sent=false;
- void mouseDown(const MouseEvent& e) override { sent=false; TextButton::mouseDown(e); }
- void mouseDrag(const MouseEvent& e) override { if(!sent && e.getDistanceFromDragStart()>5) {sent=true;if(drag)drag();} }
-};
 class Editor final : public AudioProcessorEditor, private Timer {
 public:
  explicit Editor(Processor& p):AudioProcessorEditor(p),processor(p),progressionPanel(p.progression) {
@@ -195,12 +191,12 @@ public:
   setLookAndFeel(&theme);
   setResizable(true,true);setResizeLimits(1020,720,1800,1200);
   setSize(initialWidth,initialHeight);
-  for(auto* c:std::vector<Component*>{&language,&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&velocity,&bpm,&play,&stop,&random,&undo,&save,&drag,&lockRoot,&keyboard,&notes,&status,&loop,&reset,&wheel,&redo,&libraryOpen,&progressionOpen,&timbre,&sync,&tempoLabel,&instrument,&voicing,&bassStyle,&strum,&nearVoices,&fretboard}) addAndMakeVisible(c);
+  for(auto* c:std::vector<Component*>{&language,&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&velocity,&bpm,&play,&stop,&random,&undo,&save,&drag,&lockRoot,&keyboard,&notes,&status,&loop,&reset,&wheel,&redo,&libraryOpen,&progressionOpen,&timbre,&sync,&tempoLabel,&instrument,&voicing,&bassStyle,&strum,&nearVoices,&fretboard,&outputMode}) addAndMakeVisible(c);
   addChildComponent(library);addChildComponent(progressionPanel);
   instrument.setComponentID("instrument");voicing.setComponentID("voicing");bassStyle.setComponentID("bass-style");strum.setComponentID("strum");nearVoices.setComponentID("near-voices");fretboard.setComponentID("fretboard");
   undo.setComponentID("undo");redo.setComponentID("redo");libraryOpen.setComponentID("library-open");progressionOpen.setComponentID("progression-open");timbre.setComponentID("timbre");sync.setComponentID("sync-tempo");tempoLabel.setComponentID("tempo-status");
   mode.setComponentID("mode");root.setComponentID("root");formula.setComponentID("formula");keyboard.setComponentID("keyboard");notes.setComponentID("notes");
-  play.setComponentID("play");stop.setComponentID("stop");loop.setComponentID("loop");reset.setComponentID("reset");
+  outputMode.setComponentID("output-mode");outputMode.onChange=[this]{updateExportButtons();if(processor.isPreviewing())processor.preview(outputSequence());};play.setComponentID("play");stop.setComponentID("stop");loop.setComponentID("loop");reset.setComponentID("reset");
   fretboard.onToggle=[this](int string,int fret){remember();xc::toggleFret(processor.settings,string,fret);update(true);};
   keyboard.setMouseCursor(MouseCursor::PointingHandCursor);
   keyboard.onToggle=[this](int n){remember();xc::toggleNote(processor.settings,n);update(true);};
@@ -230,7 +226,7 @@ public:
   for(auto* slider:{&velocity,&bpm}) {slider->setSliderStyle(Slider::LinearHorizontal);slider->setTextBoxStyle(Slider::TextBoxRight,false,50,24);}
   velocity.onValueChange=[this]{processor.settings.velocity=static_cast<int>(velocity.getValue());update(true);};
   bpm.onValueChange=[this]{processor.settings.bpm=static_cast<int>(bpm.getValue());update(true);};
-  play.onClick=[this]{processor.preview();};stop.onClick=[this]{processor.stop();};
+  play.onClick=[this]{processor.preview(outputSequence());};stop.onClick=[this]{processor.stop();};
   loop.onClick=[this]{processor.setLoop(loop.getToggleState());};
   reset.onClick=[this]{xc::resetNotes(processor.settings);refresh(true);};
   random.onClick=[this]{auto& s=processor.settings;auto& rng=Random::getSystemRandom();if(!lockRoot.getToggleState())s.root=rng.nextInt(12);s.formula=rng.nextInt(static_cast<int>(xc::catalog(s.scale!=0).size()));s.inversion=s.scale?0:rng.nextInt(static_cast<int>(xc::catalog(false)[static_cast<size_t>(s.formula)].intervals.size()));xc::resetNotes(s);refresh(true);};
@@ -239,16 +235,17 @@ public:
   sync.onClick=[this]{processor.settings.syncTempo=sync.getToggleState();processor.setSoundSettings();};
   libraryOpen.onClick=[this]{library.language(processor.settings.language==1);library.setVisible(!library.isVisible());library.toFront(true);};library.close=[this]{library.setVisible(false);};
   library.capture=[this]{return processor.sceneXml();};
-  library.restore=[this](const XmlElement& xml){remember();int lang=processor.settings.language,oct=processor.settings.convention,w=getWidth(),h=getHeight();processor.restoreXml(xml);processor.settings.language=lang;processor.settings.convention=oct;processor.editorWidth=w;processor.editorHeight=h;refresh();if(!processor.progression.empty()){progressionPanel.setVisible(true);progressionPanel.toFront(false);}library.setVisible(false);updateExportButtons();};
+  library.restore=[this](const XmlElement& xml){remember();int lang=processor.settings.language,oct=processor.settings.convention,w=getWidth(),h=getHeight();processor.restoreXml(xml);outputMode.setSelectedId(1,dontSendNotification);processor.settings.language=lang;processor.settings.convention=oct;processor.editorWidth=w;processor.editorHeight=h;refresh();if(!processor.progression.empty()){progressionPanel.setVisible(true);progressionPanel.toFront(false);}library.setVisible(false);updateExportButtons();};
   progressionOpen.onClick=[this]{progressionPanel.setVisible(!progressionPanel.isVisible());progressionPanel.refresh();progressionPanel.toFront(false);if(library.isVisible())library.toFront(true);updateExportButtons();};progressionPanel.onClose=[this]{progressionPanel.setVisible(false);updateExportButtons();};
   progressionPanel.beforeEdit=[this]{remember();};progressionPanel.onChanged=[this]{updateExportButtons();if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
   progressionPanel.onAdd=[this]{auto pitches=xc::selectedNotes(processor.settings);if(pitches.empty() || processor.progression.size()>=128)return;remember();processor.progression.push_back(currentStep());if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
-  progressionPanel.onReplace=[this](int index){if(xc::selectedNotes(processor.settings).empty())return;remember();auto length=processor.progression[static_cast<size_t>(index)].beats;auto gate=processor.progression[static_cast<size_t>(index)].gate;processor.progression[static_cast<size_t>(index)]=currentStep();processor.progression[static_cast<size_t>(index)].beats=length;processor.progression[static_cast<size_t>(index)].gate=gate;if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
-  progressionPanel.onLoad=[this](int index){remember();auto& step=processor.progression[static_cast<size_t>(index)];auto& s=processor.settings;s.custom=true;s.customNotes=step.notes;s.velocity=step.velocity;s.octave=step.octave;s.root=step.root;s.formula=step.formula;s.scale=step.scale;s.inversion=step.inversion;s.instrument=step.instrument;s.bassPattern=step.bassPattern;s.strum=step.strum;s.frets=step.frets;progressionPanel.setVisible(false);refresh(true);};
+  progressionPanel.onReplace=[this](int index){if(xc::selectedNotes(processor.settings).empty())return;remember();auto length=processor.progression[static_cast<size_t>(index)].beats;auto gate=processor.progression[static_cast<size_t>(index)].gate;processor.progression[static_cast<size_t>(index)]=currentStep();processor.progression[static_cast<size_t>(index)].beats=length;processor.progression[static_cast<size_t>(index)].gate=gate;outputMode.setSelectedId(1,dontSendNotification);if(processor.settings.nearVoices)xc::leadVoices(processor.progression);if(processor.isPreviewing() && processor.previewIsProgression)processor.preview(true);updateHistoryButtons();updateExportButtons();};
+  progressionPanel.onLoad=[this](int index){remember();outputMode.setSelectedId(2,dontSendNotification);auto& step=processor.progression[static_cast<size_t>(index)];auto& s=processor.settings;s.custom=true;s.customNotes=step.notes;s.velocity=step.velocity;s.octave=step.octave;s.root=step.root;s.formula=step.formula;s.scale=step.scale;s.inversion=step.inversion;s.instrument=step.instrument;s.bassPattern=step.bassPattern;s.strum=step.strum;s.frets=step.frets;progressionPanel.setVisible(false);refresh(true);};
   progressionPanel.onPlay=[this]{processor.preview(true);};progressionPanel.onExport=[this]{saveFile(true);};
   progressionPanel.onStop=[this]{processor.stop();};progressionPanel.onLoop=[this](bool enabled){remember();processor.setLoop(enabled);loop.setToggleState(enabled,dontSendNotification);};
-  save.onClick=[this]{saveFile(progressionPanel.isVisible());};
-  drag.drag=[this]{auto f=File::getSpecialLocation(File::tempDirectory).getChildFile("xchords");if(f.createDirectory().failed()){report(false);return;} auto target=f.getNonexistentChildFile("xchords",".mid"); bool whole=progressionPanel.isVisible();if(xc::writeMidi(target,whole?xc::progressionEvents(processor.progression):makeEvents(processor.settings),static_cast<int>(std::lround(processor.settings.syncTempo && processor.hasHostTempo()?processor.effectiveBpm():processor.settings.bpm)),whole?xc::progressionLength(processor.progression):0)) { bool ok=DragAndDropContainer::performExternalDragDropOfFiles({target.getFullPathName()},false,this); report(ok); } else report(false);};
+  save.onClick=[this]{saveFile(outputSequence());};
+  drag.setComponentID("midi-drag");drag.prepareMidi=[this]()->File{auto folder=File::getSpecialLocation(File::tempDirectory).getChildFile("xchords");if(folder.createDirectory().failed())return {};auto target=folder.getNonexistentChildFile("xchords",".mid");bool whole=outputSequence();return xc::writeMidi(target,whole?xc::progressionEvents(processor.progression):makeEvents(processor.settings),static_cast<int>(std::lround(processor.settings.syncTempo && processor.hasHostTempo()?processor.effectiveBpm():processor.settings.bpm)),whole?xc::progressionLength(processor.progression):0)?target:File{};};
+  drag.drag=[this]{auto target=drag.prepareMidi();report(target!=File{} && DragAndDropContainer::performExternalDragDropOfFiles({target.getFullPathName()},false,this));};
   for(auto* c:{&mode,&root,&formula,&octave,&convention,&inversion,&pattern,&duration,&timbre,&instrument,&voicing,&bassStyle}){auto callback=c->onChange;c->onChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
   for(auto* b:std::vector<Button*>{&random,&reset,&loop,&sync,&strum,&nearVoices}){auto callback=b->onClick;b->onClick=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
   for(auto* slider:{&velocity,&bpm}){auto callback=slider->onValueChange;slider->onValueChange=[this,callback]{remember();if(callback)callback();updateHistoryButtons();};}
@@ -299,10 +296,10 @@ public:
   progressionOpen.setBounds(w-610,26,110,28);libraryOpen.setBounds(w-490,26,100,28);undo.setBounds(w-380,26,86,28);redo.setBounds(w-284,26,86,28);
   timbre.setBounds(160,276,140,25);sync.setBounds(310,276,125,25);tempoLabel.setBounds(440,276,left-430,25);
   progressionPanel.setBounds(20,88,left,h-288);library.setBounds(getLocalBounds().withSizeKeepingCentre(780,440));
-  int diameter=jmin(right-32,wheelPanel.getHeight()-150);
+  int diameter=jmin(right-32,wheelPanel.getHeight()-184);
   wheel.setBounds(wheelPanel.getCentreX()-diameter/2,126,diameter,diameter);
   int buttonWidth=(right-42)/2;save.setBounds(wheelPanel.getX()+16,wheelPanel.getBottom()-46,buttonWidth,30);drag.setBounds(save.getRight()+10,save.getY(),buttonWidth,30);
-  notes.setBounds(notesPanel.reduced(16).withTrimmedTop(20));
+  outputMode.setBounds(wheelPanel.getX()+16,wheelPanel.getBottom()-80,right-32,26);notes.setBounds(notesPanel.reduced(16).withTrimmedTop(20));
   instrument.setBounds(36,h-181,180,25);voicing.setBounds(228,h-181,160,25);bassStyle.setBounds(228,h-181,230,25);strum.setBounds(400,h-181,100,25);nearVoices.setBounds(w-300,h-181,264,25);fretboard.setBounds(36,h-154,w-72,110);
   keyboard.setBounds(36,h-154,w-72,110);status.setBounds(20,h-27,w-160,22);
  }
@@ -312,14 +309,14 @@ private:
  XChordsTheme theme;
  TooltipWindow tooltips{this,500};
  Rectangle<int> harmonyPanel,performancePanel,notesPanel,wheelPanel,keyboardPanel;
- ComboBox language,mode,root,formula,octave,convention,inversion,pattern,duration,timbre,instrument,voicing,bassStyle;
+ ComboBox outputMode,language,mode,root,formula,octave,convention,inversion,pattern,duration,timbre,instrument,voicing,bassStyle;
  Slider velocity,bpm; TextButton play,stop,random,undo,redo,save,reset,libraryOpen,progressionOpen;DragButton drag;ToggleButton lockRoot,loop,sync,strum,nearVoices;Fretboard fretboard;Keyboard keyboard;CamelotWheel wheel;TextEditor notes;Label status,tempoLabel;
  LibraryPanel library;ProgressionPanel progressionPanel;
  std::array<Rectangle<int>,10> fields;std::unique_ptr<FileChooser> chooser;
  void fill(ComboBox& c,const StringArray& values,int selected) {c.clear(dontSendNotification);c.addItemList(values,1);c.setSelectedId(selected+1,dontSendNotification);}
  void refresh(bool audition=false) {
   auto& s=processor.settings;bool pt=s.language==1;
-  language.setSelectedId(s.language+1,dontSendNotification);
+  language.setSelectedId(s.language+1,dontSendNotification);fill(outputMode,{tr(pt,"Output: full sequence","Saída: sequência inteira"),tr(pt,"Output: selected notes","Saída: notas selecionadas")},outputMode.getSelectedId()==2?1:0);
   fill(instrument,{tr(pt,"Keyboard","Teclado"),tr(pt,"Guitar / acoustic","Guitarra / violão"),tr(pt,"Bass · 4 strings","Baixo · 4 cordas"),tr(pt,"Bass · 5 strings","Baixo · 5 cordas")},s.instrument);fill(bassStyle,{tr(pt,"Root","Fundamental"),tr(pt,"Root / fifth / octave","Fundamental / quinta / oitava"),tr(pt,"Selected tones","Notas selecionadas")},s.bassPattern);strum.setButtonText("Strum");strum.setToggleState(s.strum,dontSendNotification);nearVoices.setButtonText(tr(pt,"Close voices · progression","Aproximar vozes · progressão"));nearVoices.setToggleState(s.nearVoices,dontSendNotification);StringArray positions;if(s.instrument==1 && !s.scale){auto shapes=xc::guitarShapes(s.root,xc::catalog(false)[static_cast<size_t>(s.formula)],s.inversion);for(size_t i=0;i<shapes.size();++i)positions.add(tr(pt,"Position ","Posição ")+String(static_cast<int>(i+1)));}fill(voicing,positions,s.voicing);
   fill(mode,{tr(pt,"Chords","Acordes"),tr(pt,"Scales","Escalas")},s.scale);
   StringArray roots;for(int n=0;n<12;++n) {auto name=String::fromUTF8(xc::noteNames(60+n).c_str()); name=name.upToFirstOccurrenceOf(String::fromUTF8(" · MIDI"),false,false).removeCharacters("4");roots.add(name);}fill(root,roots,s.root);
@@ -345,9 +342,10 @@ private:
   wheel.select(s.custom?String{}:String(xc::referenceCamelot(s)));
   status.setText(s.custom?tr(s.language==1,"Custom · preview and MIDI use exactly the selected notes","Personalizada · prévia e MIDI usam exatamente as notas selecionadas"):tr(s.language==1,"Original selection · ready to edit","Seleção original · pronta para editar"),dontSendNotification);
   if(s.instrument>=2)status.setText(tr(s.language==1,"Bass line · preview and MIDI use the selected pattern","Linha de baixo · prévia e MIDI usam o padrão selecionado"),dontSendNotification);else if(s.instrument==1 && empty)status.setText(tr(s.language==1,"No suggested shape. Click the fretboard to build one.","Sem posição sugerida. Clique no braço para montar uma."),dontSendNotification);
-  if(audition && processor.isPreviewing())processor.preview(progressionPanel.isVisible() && processor.previewIsProgression);updateHistoryButtons();updateExportButtons();repaint();
+  if(audition && processor.isPreviewing())processor.preview(outputSequence());updateHistoryButtons();updateExportButtons();repaint();
  }
- void updateExportButtons(){bool enabled=progressionPanel.isVisible()?!xc::progressionEvents(processor.progression).empty():!xc::selectedNotes(processor.settings).empty();save.setEnabled(enabled);drag.setEnabled(enabled);}
+ bool outputSequence()const{return outputMode.getSelectedId()!=2 && !processor.progression.empty();}
+ void updateExportButtons(){outputMode.setEnabled(!processor.progression.empty());bool enabled=outputSequence()?!xc::progressionEvents(processor.progression).empty():!xc::selectedNotes(processor.settings).empty();save.setEnabled(enabled);drag.setEnabled(enabled);play.setEnabled(enabled);play.setButtonText(outputSequence()?tr(processor.settings.language==1,"Play sequence","Ouvir sequência"):tr(processor.settings.language==1,"Play","Ouvir"));}
  void report(bool ok) {bool pt=processor.settings.language==1;status.setText(ok?tr(pt,"MIDI ready","MIDI pronto"):tr(pt,"Could not create or drag MIDI","Não foi possível criar ou arrastar MIDI"),dontSendNotification);}
  void saveFile(bool wholeProgression=false) {
   const auto snapshot=processor.settings;
