@@ -16,7 +16,7 @@ struct Settings {
 };
 inline std::vector<int> selectedNotes(const Settings& s) {
  if(s.custom) return s.customNotes;
- if(s.instrument==1 && !s.scale){auto shapes=guitarShapes(s.root,catalog(false)[static_cast<size_t>(s.formula)]);return shapes.empty()?std::vector<int>{}:shapeNotes(shapes[static_cast<size_t>(s.voicing)%shapes.size()].frets);}
+ if(s.instrument==1 && !s.scale){auto shapes=guitarShapes(s.root,catalog(false)[static_cast<size_t>(s.formula)],s.inversion);return shapes.empty()?std::vector<int>{}:shapeNotes(shapes[static_cast<size_t>(s.voicing)%shapes.size()].frets);}
  const auto& cat=catalog(s.scale!=0);
  int low=s.instrument>=2?tuning(s.instrument).front():0;
  int base=s.instrument==1?48:s.instrument>=2?low+(s.root-low%12+12)%12-s.root:s.octave*12;
@@ -31,7 +31,7 @@ inline void toggleNote(Settings& s,int note) {
  std::sort(notes.begin(),notes.end());s.custom=true;s.customNotes=std::move(notes);
 }
 inline void resetNotes(Settings& s) {s.custom=false;s.customNotes.clear();s.frets.clear();s.voicing=0;}
-inline std::vector<int> selectedFrets(const Settings& s){if(s.frets.size()==6)return s.frets;if(s.custom || s.scale)return std::vector<int>(6,-1);auto shapes=guitarShapes(s.root,catalog(false)[static_cast<size_t>(s.formula)]);return shapes.empty()?std::vector<int>(6,-1):shapes[static_cast<size_t>(s.voicing)%shapes.size()].frets;}
+inline std::vector<int> selectedFrets(const Settings& s){if(s.frets.size()==6)return s.frets;if(s.custom || s.scale)return std::vector<int>(6,-1);auto shapes=guitarShapes(s.root,catalog(false)[static_cast<size_t>(s.formula)],s.inversion);return shapes.empty()?std::vector<int>(6,-1):shapes[static_cast<size_t>(s.voicing)%shapes.size()].frets;}
 inline void toggleFret(Settings& s,int string,int fret){if(s.instrument!=1 || s.scale){toggleNote(s,tuning(s.instrument)[static_cast<size_t>(string)]+fret);return;}auto frets=selectedFrets(s);frets[static_cast<size_t>(string)]=frets[static_cast<size_t>(string)]==fret?-1:fret;s.frets=frets;s.custom=true;s.customNotes=shapeNotes(frets);}
 inline std::vector<Event> makeEvents(const Settings& s) {
  double length=std::array<double,4>{0.25,0.5,1,2}[static_cast<size_t>(s.duration)];
@@ -50,7 +50,7 @@ struct ChordStep {
  double beats=4;
  int velocity=90;
  int root=0,formula=0,scale=0,octave=5;
- int instrument=0,bassPattern=0;
+ int instrument=0,bassPattern=0,inversion=0;
  bool strum=false;
  std::vector<int> frets;
 };
@@ -64,5 +64,5 @@ inline std::vector<Event> progressionEvents(const std::vector<ChordStep>& steps)
  }
  return result;
 }
-inline void leadVoices(std::vector<ChordStep>& steps){for(size_t i=1;i<steps.size();++i){auto& step=steps[i];if(step.instrument==1){auto shapes=guitarShapes(step.root,catalog(step.scale!=0)[static_cast<size_t>(step.formula)]);auto pcs=[](const std::vector<int>& ns){std::vector<int> p;for(int n:ns)p.push_back(n%12);return uniqueNotes(p);};int best=movement(steps[i-1].notes,step.notes);for(const auto& shape:shapes){auto ns=shapeNotes(shape.frets);if(pcs(ns)!=pcs(step.notes))continue;int score=movement(steps[i-1].notes,ns);if(score<best){best=score;step.notes=ns;step.frets=shape.frets;}}}else if(step.instrument==0)step.notes=closeVoicing(steps[i-1].notes,step.notes,24,96);else if(!step.notes.empty() && !steps[i-1].notes.empty()){auto strings=tuning(step.instrument);int shift=0,best=128;for(int offset=-36;offset<=36;offset+=12){int root=step.notes.front()+offset;if(root<strings.front() || root>strings.back()+12)continue;int distance=std::abs(root-steps[i-1].notes.front());if(distance<best){best=distance;shift=offset;}}for(auto& n:step.notes)n+=shift;}}}
+inline void leadVoices(std::vector<ChordStep>& steps){for(size_t i=1;i<steps.size();++i){auto& step=steps[i];if(step.instrument==1){auto shapes=guitarShapes(step.root,catalog(step.scale!=0)[static_cast<size_t>(step.formula)],step.inversion);auto pcs=[](const std::vector<int>& ns){std::vector<int> p;for(int n:ns)p.push_back(n%12);return uniqueNotes(p);};int best=movement(steps[i-1].notes,step.notes);for(const auto& shape:shapes){auto ns=shapeNotes(shape.frets);if(pcs(ns)!=pcs(step.notes))continue;int score=movement(steps[i-1].notes,ns);if(score<best){best=score;step.notes=ns;step.frets=shape.frets;}}}else if(step.instrument==0)step.notes=closeVoicing(steps[i-1].notes,step.notes,24,96);else if(!step.notes.empty() && !steps[i-1].notes.empty()){auto strings=tuning(step.instrument);int shift=0,best=128;for(int offset=-36;offset<=36;offset+=12){int root=step.notes.front()+offset;if(root<strings.front() || root>strings.back()+12)continue;int distance=std::abs(root-steps[i-1].notes.front());if(distance<best){best=distance;shift=offset;}}for(auto& n:step.notes)n+=shift;}}}
 }

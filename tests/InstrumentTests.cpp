@@ -16,5 +16,6 @@ int main(){
  Settings g;g.instrument=1;ChordStep first;first.instrument=1;first.notes=selectedNotes(g);g.root=7;g.voicing=10;ChordStep next;next.instrument=1;next.root=7;next.notes=selectedNotes(g);next.frets=selectedFrets(g);int oldMovement=movement(first.notes,next.notes);steps={first,next};leadVoices(steps);check(movement(steps[0].notes,steps[1].notes)<=oldMovement && steps[1].notes==shapeNotes(steps[1].frets),"Guitar voice leading keeps a valid shape");
  ChordStep bassFirst; bassFirst.instrument=2;bassFirst.notes={43,47,50};ChordStep bassNext;bassNext.instrument=2;bassNext.root=0;bassNext.notes={36,40,43};steps={bassFirst,bassNext};leadVoices(steps);check(steps[1].notes.front()==48,"Bass picks closer octave");
  Settings independent;independent.instrument=2;auto baseline=selectedNotes(independent);independent.inversion=2;check(selectedNotes(independent)==baseline,"Bass ignores keyboard inversion");
+ Settings inverted;inverted.instrument=1;inverted.inversion=1;check(selectedNotes(inverted).front()%12==4,"Guitar first inversion bass E");inverted.inversion=2;check(selectedNotes(inverted).front()%12==7,"Guitar second inversion bass G");check(shapeNotes(selectedFrets(inverted))==selectedNotes(inverted),"Inversion fretboard matches MIDI");
  std::cout<<"Instruments: tuning, playable ranges, complete shapes, edits, strum, bass and voice leading OK\n";
 }

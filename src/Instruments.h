@@ -14,15 +14,16 @@ inline std::vector<int> tuning(int instrument) {
 inline std::vector<int> uniqueNotes(std::vector<int> notes){std::sort(notes.begin(),notes.end());notes.erase(std::unique(notes.begin(),notes.end()),notes.end());return notes;}
 inline std::vector<int> shapeNotes(const std::vector<int>& frets){std::vector<int> result;auto strings=tuning(1);for(size_t i=0;i<strings.size() && i<frets.size();++i)if(frets[i]>=0 && frets[i]<=12)result.push_back(strings[i]+frets[i]);return uniqueNotes(result);}
 struct GuitarShape {std::vector<int> frets;int score=0;};
-// Enumerate pitch-class-complete, root-bass shapes on frets 0..12.
+// Enumerate pitch-class-complete, inversion-bass shapes on frets 0..12.
 // Fretted notes span at most four frets. These are suggestions, not a guarantee
 // of ergonomic fingering (barres and individual finger assignments are not modelled).
-inline std::vector<GuitarShape> guitarShapes(int root,const Formula& formula) {
+inline std::vector<GuitarShape> guitarShapes(int root,const Formula& formula,int inversion=0) {
+ int bassClass=(root+formula.intervals[static_cast<size_t>(std::clamp(inversion,0,static_cast<int>(formula.intervals.size())-1))])%12;
  int mask=0;for(int n:formula.intervals)mask|=1<<((root+n)%12);
  if(formula.intervals.size()>6)return {};
  auto strings=tuning(1);std::vector<GuitarShape> result;std::vector<int> frets(6,-1);
  std::function<void(int,int,int,int,int,int)> visit=[&](int string,int used,int lo,int hi,int count,int bass){
-  if(string==6){if(used!=mask || count<3 || bass%12!=root)return;int sum=0;for(int f:frets)sum+=std::max(0,f);result.push_back({frets,(6-count)*5+sum+(hi>0?hi-lo:0)*3});return;}
+  if(string==6){if(used!=mask || count<3 || bass%12!=bassClass)return;int sum=0;for(int f:frets)sum+=std::max(0,f);result.push_back({frets,(6-count)*5+sum+(hi>0?hi-lo:0)*3});return;}
   frets[static_cast<size_t>(string)]=-1;visit(string+1,used,lo,hi,count,bass);
   for(int f=0;f<=12;++f){int note=strings[static_cast<size_t>(string)]+f;if(!(mask&(1<<(note%12))))continue;
    int low=f?std::min(lo,f):lo,high=std::max(hi,f);if(high>0 && high-low>3)continue;
