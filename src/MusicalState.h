@@ -20,7 +20,7 @@ inline std::vector<int> selectedNotes(const Settings& s) {
  const auto& cat=catalog(s.scale!=0);
  int low=s.instrument>=2?tuning(s.instrument).front():0;
  int base=s.instrument==1?48:s.instrument>=2?low+(s.root-low%12+12)%12-s.root:s.octave*12;
- auto notes=pitches(base+s.root,cat[static_cast<size_t>(std::clamp(s.formula,0,static_cast<int>(cat.size())-1))],s.scale?0:s.inversion);
+ auto notes=pitches(base+s.root,cat[static_cast<size_t>(std::clamp(s.formula,0,static_cast<int>(cat.size())-1))],s.scale || s.instrument!=0?0:s.inversion);
  if(s.scale) notes.push_back(base+s.root+12);
  return notes;
 }
